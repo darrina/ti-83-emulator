@@ -1,0 +1,1788 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TI-83 Emulator</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{
+  width:100%;height:100%;
+  background:radial-gradient(ellipse at center,#1a2040 0%,#080c18 100%);
+  display:flex;align-items:center;justify-content:center;
+  font-family:'Courier New',monospace;
+  overflow:hidden;
+}
+
+/* ─── FLIP SCENE ─── */
+.scene{
+  width:280px;height:540px;
+  perspective:900px;
+  /* Scale to fill viewport */
+  transform:scale(min(calc(96vw / 280), calc(96vh / 540)));
+  transform-origin:center center;
+}
+.calculator{
+  width:100%;height:100%;
+  position:relative;
+  transform-style:preserve-3d;
+  transition:transform .8s cubic-bezier(.4,0,.2,1);
+}
+.calculator.flipped{transform:rotateY(180deg)}
+
+.face{
+  position:absolute;width:100%;height:100%;
+  backface-visibility:hidden;
+  -webkit-backface-visibility:hidden;
+}
+.face-back{transform:rotateY(180deg)}
+
+/* ─── CALCULATOR FRONT ─── */
+.calc-body{
+  width:100%;height:100%;
+  background:linear-gradient(170deg,#202035 0%,#12121f 55%,#0c0c18 100%);
+  border-radius:12px 12px 22px 22px;
+  border:2px solid #2c2c50;
+  box-shadow:0 12px 40px #000c,inset 0 1px 0 #ffffff18;
+  display:flex;flex-direction:column;
+  padding:7px 8px 9px;
+  gap:4px;
+}
+
+/* Brand */
+.brand-bar{
+  display:flex;justify-content:space-between;align-items:flex-end;
+  padding:1px 3px;
+}
+.brand-ti{font-size:8px;font-weight:bold;color:#8090c8;letter-spacing:.5px}
+.brand-model{font-size:15px;font-weight:900;color:#c0cfff;letter-spacing:3px}
+
+/* Screen */
+.screen-bezel{
+  background:#080810;
+  border-radius:5px;
+  padding:5px 6px 6px;
+  border:2px solid #1a1a30;
+  box-shadow:inset 0 2px 8px #0008;
+  margin:0 3px;
+}
+.screen-win{
+  background:#a2b464;
+  border-radius:3px;
+  overflow:hidden;
+  position:relative;
+  box-shadow:inset 0 1px 4px #0005,0 1px 0 #d4e890;
+}
+#screen{
+  display:block;width:100%;height:auto;
+  image-rendering:pixelated;image-rendering:crisp-edges;
+}
+#run-led{
+  display:none;position:absolute;top:3px;right:3px;
+  width:5px;height:5px;border-radius:50%;
+  background:#00ff44;box-shadow:0 0 4px #00ff44;
+  animation:blink .5s infinite;
+}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.1}}
+#input-bar{
+  display:none;position:absolute;bottom:0;left:0;right:0;
+  background:#00000099;padding:3px 4px;
+}
+#input-field{
+  width:100%;background:#0a140a;color:#80ff80;
+  border:none;outline:none;padding:1px 3px;
+  font:9px 'Courier New',monospace;
+}
+
+/* ─── BUTTON AREA ─── */
+.buttons{display:flex;flex-direction:column;gap:3px;flex:1;margin-top:2px}
+.row{display:flex;gap:3px;justify-content:center;align-items:center}
+
+.btn{
+  flex:1;border:none;cursor:pointer;
+  border-radius:4px;
+  font-size:7px;font-weight:700;
+  font-family:Arial,sans-serif;
+  text-align:center;user-select:none;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  min-height:22px;padding:2px 0;
+  position:relative;
+  transition:filter .07s,transform .07s;
+  outline:none;
+}
+.btn:active,.btn.pressed{transform:translateY(1px);filter:brightness(.75)}
+
+/* color families */
+.dk{background:linear-gradient(180deg,#38384c,#1e1e2c);color:#d8d8f0;border-bottom:2px solid #0a0a14}
+.bl{background:linear-gradient(180deg,#2a60b0,#163878);color:#fff;border-bottom:2px solid #091830}
+.gr{background:linear-gradient(180deg,#2a8c50,#14522a);color:#fff;border-bottom:2px solid #061808}
+.nb{background:linear-gradient(180deg,#464658,#28283a);color:#e8e8ff;border-bottom:2px solid #101018;font-size:11px}
+.ent{background:linear-gradient(180deg,#20202e,#0e0e18);color:#b0b0d0;border-bottom:3px solid #040408;min-height:26px;font-size:8px}
+.on-btn{background:linear-gradient(180deg,#306030,#183018);color:#c0f0c0;border-bottom:2px solid #060c06}
+.prg{background:linear-gradient(180deg,#5a3870,#301848);color:#e8c0ff;border-bottom:2px solid #140820}
+
+/* secondary label above button */
+.s{font-size:5px;position:absolute;top:1px;color:#7090ff;letter-spacing:0;line-height:1}
+.sg{color:#70d090}
+.m{line-height:1;font-size:7px}
+
+/* D-pad */
+.dpad{
+  display:grid;
+  grid-template-columns:repeat(3,22px);
+  grid-template-rows:repeat(3,20px);
+  gap:2px;
+}
+.dpad-btn{
+  width:22px;height:20px;
+  border:none;cursor:pointer;
+  background:linear-gradient(180deg,#38384c,#1e1e2c);
+  color:#e0e0f0;
+  font-size:9px;font-weight:700;
+  border-radius:4px;border-bottom:2px solid #0a0a14;
+  display:flex;align-items:center;justify-content:center;
+  user-select:none;transition:filter .07s,transform .07s;
+  outline:none;
+}
+.dpad-btn:active,.dpad-btn.pressed{transform:translateY(1px);filter:brightness(.75)}
+.dpad-mid{background:#14141e;border:1px solid #28283a;cursor:default}
+
+/* row spacing helpers */
+.nav-row{justify-content:space-between;padding:0 2px}
+.nav-left{display:flex;gap:3px;align-items:center}
+.pad-row{justify-content:flex-end;padding-right:2px}
+
+/* ─── PROGRAM EDITOR (back face) ─── */
+.editor-body{
+  width:100%;height:100%;
+  background:linear-gradient(170deg,#0e1e0e,#080f08);
+  border-radius:12px 12px 22px 22px;
+  border:2px solid #1a3018;
+  box-shadow:0 12px 40px #000c;
+  display:flex;flex-direction:column;
+  padding:10px;gap:7px;
+}
+.ed-hdr{display:flex;justify-content:space-between;align-items:center}
+.ed-title{font-size:9px;font-weight:700;color:#60d060;letter-spacing:2px;text-transform:uppercase}
+.ed-name{font-size:7px;color:#407840;font-family:'Courier New',monospace}
+
+.ed-toolbar{display:flex;gap:5px}
+.eb{
+  flex:1;padding:5px 3px;
+  border-radius:4px;font-size:8px;font-weight:700;
+  font-family:Arial,sans-serif;cursor:pointer;
+  transition:filter .1s;border:none;
+}
+.eb:hover{filter:brightness(1.15)}
+.eb:active{filter:brightness(.8)}
+.eb-std{background:#1a3a1a;color:#80e080;border:1px solid #2a5a2a}
+.eb-run{background:#144a14;color:#a0ffa0;border:1px solid #2a7a2a}
+.eb-done{background:#3a1414;color:#ffa0a0;border:1px solid #6a2828}
+
+.prog-list{
+  background:#060e06;border:1px solid #1a2e18;border-radius:4px;
+  padding:5px;max-height:90px;overflow-y:auto;
+}
+.prog-list-title{font-size:7px;color:#3a5838;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px}
+.prog-item{
+  font-size:8px;color:#558855;cursor:pointer;
+  padding:2px 4px;border-radius:2px;
+  font-family:'Courier New',monospace;
+}
+.prog-item:hover{background:#142014;color:#90d890}
+
+#program-editor{
+  flex:1;background:#040c04;color:#70ee70;
+  border:1px solid #1e3c1e;border-radius:4px;
+  padding:6px;font-family:'Courier New',monospace;font-size:9px;line-height:1.5;
+  resize:none;outline:none;caret-color:#70ee70;tab-size:2;
+}
+#program-editor:focus{border-color:#3a6a3a}
+
+.ed-status{font-size:7px;color:#3a5038;font-family:'Courier New',monospace;min-height:10px}
+
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:#080c08}
+::-webkit-scrollbar-thumb{background:#1a3a1a;border-radius:2px}
+</style>
+</head>
+<body>
+<div class="scene">
+ <div class="calculator" id="calc">
+
+  <!-- ══════════ FRONT FACE ══════════ -->
+  <div class="face">
+   <div class="calc-body">
+
+    <div class="brand-bar">
+      <span class="brand-ti">Texas Instruments</span>
+      <span class="brand-model">TI-83</span>
+    </div>
+
+    <div class="screen-bezel">
+      <div class="screen-win">
+        <canvas id="screen" width="96" height="64"></canvas>
+        <div id="run-led"></div>
+        <div id="input-bar"><input id="input-field" type="text" autocomplete="off" autocorrect="off" spellcheck="false"></div>
+      </div>
+    </div>
+
+    <div class="buttons">
+      <!-- Graph function keys -->
+      <div class="row">
+        <button class="btn dk" data-k="yequals"><span class="m">Y=</span></button>
+        <button class="btn dk" data-k="window"><span class="m" style="font-size:5.5px">WINDOW</span></button>
+        <button class="btn dk" data-k="zoom"><span class="m">ZOOM</span></button>
+        <button class="btn dk" data-k="trace"><span class="m">TRACE</span></button>
+        <button class="btn dk" data-k="graph"><span class="m">GRAPH</span></button>
+      </div>
+
+      <!-- 2ND MODE DEL + D-pad up -->
+      <div class="row nav-row">
+        <div class="nav-left">
+          <button class="btn bl" data-k="2nd" style="flex:1"><span class="m">2ND</span></button>
+          <button class="btn dk" data-k="mode" style="flex:1"><span class="m">MODE</span></button>
+          <button class="btn dk" data-k="del" style="flex:1"><span class="m">DEL</span></button>
+        </div>
+        <div class="dpad">
+          <div></div><button class="dpad-btn" data-k="up">▲</button><div></div>
+          <button class="dpad-btn" data-k="left">◄</button>
+          <div class="dpad-btn dpad-mid"></div>
+          <button class="dpad-btn" data-k="right">►</button>
+          <div></div><button class="dpad-btn" data-k="down">▼</button><div></div>
+        </div>
+      </div>
+
+      <!-- ALPHA STAT (aligned left, D-pad space on right) -->
+      <div class="row nav-row" style="padding-right:72px">
+        <div class="nav-left">
+          <button class="btn gr" data-k="alpha" style="flex:1"><span class="m">ALPHA</span></button>
+          <button class="btn dk" data-k="stat" style="flex:1"><span class="m">STAT</span></button>
+          <div style="flex:1"></div>
+        </div>
+      </div>
+
+      <!-- MATH MATRX PRGM VARS CLEAR -->
+      <div class="row">
+        <button class="btn dk" data-k="math"><span class="m">MATH</span></button>
+        <button class="btn dk" data-k="matrx"><span class="m" style="font-size:5.5px">MATRX</span></button>
+        <button class="btn prg" id="prgm-btn" data-k="prgm"><span class="m">PRGM</span></button>
+        <button class="btn dk" data-k="vars"><span class="m">VARS</span></button>
+        <button class="btn dk" data-k="clear" style="color:#ff8080"><span class="m">CLEAR</span></button>
+      </div>
+
+      <!-- x-1 SIN COS TAN ^ -->
+      <div class="row">
+        <button class="btn dk" data-k="xinv"><span class="s">x⁻¹</span><span class="m">x⁻¹</span></button>
+        <button class="btn dk" data-k="sin"><span class="s">sin⁻¹</span><span class="m">SIN</span></button>
+        <button class="btn dk" data-k="cos"><span class="s">cos⁻¹</span><span class="m">COS</span></button>
+        <button class="btn dk" data-k="tan"><span class="s">tan⁻¹</span><span class="m">TAN</span></button>
+        <button class="btn dk" data-k="pow" data-ch="^"><span class="m">^</span></button>
+      </div>
+
+      <!-- X,T,θ,n LOG , ( ) ÷ -->
+      <div class="row">
+        <button class="btn dk" data-k="xtheta"><span class="s">LINK</span><span class="m" style="font-size:5.5px">X,T,θ</span></button>
+        <button class="btn dk" data-k="log"><span class="s">10^x</span><span class="m">LOG</span></button>
+        <button class="btn dk" data-k="comma" data-ch=","><span class="m">,</span></button>
+        <button class="btn dk" data-k="lp" data-ch="("><span class="m">(</span></button>
+        <button class="btn dk" data-k="rp" data-ch=")"><span class="m">)</span></button>
+      </div>
+
+      <!-- LN 7 8 9 × -->
+      <div class="row">
+        <button class="btn dk" data-k="ln"><span class="s">e^x</span><span class="m">LN</span></button>
+        <button class="btn nb" data-k="7" data-ch="7">7</button>
+        <button class="btn nb" data-k="8" data-ch="8">8</button>
+        <button class="btn nb" data-k="9" data-ch="9">9</button>
+        <button class="btn dk" data-k="mul" data-ch="*"><span class="m">×</span></button>
+      </div>
+
+      <!-- STO► 4 5 6 - -->
+      <div class="row">
+        <button class="btn dk" data-k="sto"><span class="m">STO▶</span></button>
+        <button class="btn nb" data-k="4" data-ch="4">4</button>
+        <button class="btn nb" data-k="5" data-ch="5">5</button>
+        <button class="btn nb" data-k="6" data-ch="6">6</button>
+        <button class="btn dk" data-k="sub" data-ch="-"><span class="m">−</span></button>
+      </div>
+
+      <!-- (spacer) 1 2 3 + -->
+      <div class="row">
+        <div style="flex:1"></div>
+        <button class="btn nb" data-k="1" data-ch="1">1</button>
+        <button class="btn nb" data-k="2" data-ch="2">2</button>
+        <button class="btn nb" data-k="3" data-ch="3">3</button>
+        <button class="btn dk" data-k="add" data-ch="+"><span class="m">+</span></button>
+      </div>
+
+      <!-- ON 0 . (-) ENTER -->
+      <div class="row">
+        <button class="btn on-btn" data-k="on"><span class="m">ON</span></button>
+        <button class="btn nb" data-k="0" data-ch="0">0</button>
+        <button class="btn nb" data-k="dot" data-ch=".">.</button>
+        <button class="btn dk" data-k="neg" data-ch="(-)"><span class="m">(−)</span></button>
+        <button class="btn ent" data-k="enter"><span class="m">ENTER</span></button>
+      </div>
+    </div><!-- /buttons -->
+
+   </div><!-- /calc-body -->
+  </div><!-- /face-front -->
+
+  <!-- ══════════ BACK FACE (Program Editor) ══════════ -->
+  <div class="face face-back">
+   <div class="editor-body">
+    <div class="ed-hdr">
+      <span class="ed-title">PROGRAM EDITOR</span>
+      <span class="ed-name" id="ed-pname">NEW PROGRAM</span>
+    </div>
+
+    <div class="ed-toolbar">
+      <button class="eb eb-std" onclick="openProg()">📂 OPEN</button>
+      <button class="eb eb-std" onclick="saveProg()">💾 SAVE</button>
+      <button class="eb eb-run" onclick="runEdProg()">▶ RUN</button>
+      <button class="eb eb-done" onclick="flipBack()">✕ DONE</button>
+    </div>
+
+    <div class="prog-list">
+      <div class="prog-list-title">Built-in Programs</div>
+      <div class="prog-item" onclick="loadBuiltin('SNAKE')">🐍 SNAKE.bas</div>
+      <div class="prog-item" onclick="loadBuiltin('PONG')">🏓 PONG.bas</div>
+      <div class="prog-item" onclick="loadBuiltin('TETRIS')">🧩 TETRIS.bas</div>
+    </div>
+
+    <textarea id="program-editor" spellcheck="false"
+      placeholder=":ClrHome&#10;:Disp &quot;HELLO WORLD&quot;&#10;:Pause"></textarea>
+
+    <div class="ed-status" id="ed-status">Select a built-in program or OPEN a .bas file.</div>
+   </div>
+  </div><!-- /face-back -->
+
+ </div><!-- /calculator -->
+</div><!-- /scene -->
+
+<input type="file" id="file-open" style="display:none" accept=".bas,.txt">
+
+<script>
+'use strict';
+/* ================================================================
+   TI-83 EMULATOR — Complete Implementation
+   ================================================================ */
+
+// ── TI-83 getKey codes ──
+const TK = {
+  UP:25, DOWN:34, LEFT:24, RIGHT:26,
+  ENTER:105, CLEAR:45, DEL:102,
+  N0:92,N1:81,N2:82,N3:83,N4:71,N5:72,N6:73,N7:61,N8:62,N9:63,
+  ADD:100, SUB:75, MUL:85, DIV:95, POW:16,
+  DOT:53, NEG:54, ON:11,
+};
+
+/* ================================================================
+   SCREEN / DISPLAY
+   ================================================================ */
+class TI83Screen {
+  constructor(cv) {
+    this.cv = cv;
+    this.cx = cv.getContext('2d');
+    this.W = 96; this.H = 64;
+    this.COLS = 16; this.ROWS = 8;
+    this.CW = 6; this.CH = 8;          // char dimensions in pixels
+    this.mode = 'home';                 // 'home' | 'graph'
+    this.buf = this._emptyHome();      // home text buffer
+    this.px = new Uint8Array(96*64);   // graph pixel buffer
+    this.curR = 0;                     // current disp row (0-based)
+    this._render();
+  }
+  _emptyHome() {
+    return Array.from({length:8}, ()=>new Array(16).fill(' '));
+  }
+
+  /* ── Home screen ops ── */
+  clearHome() {
+    this.mode = 'home';
+    this.buf = this._emptyHome();
+    this.curR = 0;
+    this._render();
+  }
+  output(row, col, text) {      // 1-based row/col
+    this.mode = 'home';
+    const r = Math.max(0, Math.min(7, Math.floor(+row) - 1));
+    const c = Math.max(0, Math.min(15, Math.floor(+col) - 1));
+    const s = String(text);
+    for (let i = 0; i < s.length && c+i < 16; i++) this.buf[r][c+i] = s[i];
+    this._render();
+  }
+  disp(text) {
+    this.mode = 'home';
+    if (this.curR >= 8) {
+      this.buf.shift();
+      this.buf.push(new Array(16).fill(' '));
+      this.curR = 7;
+    }
+    const s = String(text).slice(0, 16);
+    for (let i = 0; i < 16; i++) this.buf[this.curR][i] = i < s.length ? s[i] : ' ';
+    this.curR++;
+    this._render();
+  }
+
+  /* ── Graph screen ops ── */
+  clearGraph() {
+    this.px.fill(0);
+    this._render();
+  }
+  setMode(m) { this.mode = m; this._render(); }
+
+  // Pt-On/Off: y=0 is bottom
+  ptOn(x, y)  { this._sp(Math.round(x), 63-Math.round(y), 1); this._render(); }
+  ptOff(x, y) { this._sp(Math.round(x), 63-Math.round(y), 0); this._render(); }
+
+  // Pxl-On/Off: row/col top-left (TI-83 uses row,col for Pxl)
+  pxlOn(r, c)  { this._sp(Math.round(c), Math.round(r), 1); this._render(); }
+  pxlOff(r, c) { this._sp(Math.round(c), Math.round(r), 0); this._render(); }
+
+  _sp(x, y, v) {
+    if (x>=0&&x<96&&y>=0&&y<64) this.px[y*96+x] = v;
+  }
+
+  line(x1,y1,x2,y2) {
+    this.mode = 'graph';
+    [x1,y1,x2,y2] = [Math.round(x1),63-Math.round(y1),Math.round(x2),63-Math.round(y2)];
+    let dx=Math.abs(x2-x1), dy=Math.abs(y2-y1);
+    let sx=x1<x2?1:-1, sy=y1<y2?1:-1, e=dx-dy;
+    while(true){
+      this._sp(x1,y1,1);
+      if(x1===x2&&y1===y2)break;
+      let e2=2*e;
+      if(e2>-dy){e-=dy;x1+=sx;}
+      if(e2<dx){e+=dx;y1+=sy;}
+    }
+    this._render();
+  }
+
+  circle(cx,cy,r) {
+    this.mode='graph';
+    cy=63-cy; r=Math.abs(Math.round(r));
+    let x=r,y=0,p=1-r;
+    while(x>=y){
+      this._sp(cx+x,cy+y,1);this._sp(cx-x,cy+y,1);
+      this._sp(cx+x,cy-y,1);this._sp(cx-x,cy-y,1);
+      this._sp(cx+y,cy+x,1);this._sp(cx-y,cy+x,1);
+      this._sp(cx+y,cy-x,1);this._sp(cx-y,cy-x,1);
+      y++;
+      if(p<=0)p+=2*y+1;else{x--;p+=2*(y-x)+1;}
+    }
+    this._render();
+  }
+
+  textGraph(row,col,text) {
+    // small 3x5 pixel font
+    const FONT={'0':'111101101101111','1':'010110010010111','2':'111001111100111',
+      '3':'111001111001111','4':'101101111001001','5':'111100111001111',
+      '6':'111100111101111','7':'111001001010010','8':'111101111101111',
+      '9':'111101111001111','A':'111101111101101','B':'110101110101110',
+      'C':'111100100100111','D':'110101101101110','E':'111100111100111',
+      'F':'111100111100100','G':'111100101101111','H':'101101111101101',
+      'I':'111010010010111','L':'100100100100111','M':'101111111101101',
+      'N':'101111101101101','O':'111101101101111','P':'111101111100100',
+      'R':'111101110110101','S':'111100111001111','T':'111010010010010',
+      'U':'101101101101111','V':'101101101010010','W':'101101111111101',
+      'X':'101101010101101','Y':'101101010010010','Z':'111001010100111',
+      ' ':'000000000000000',':':'010000010000010','-':'000000111000000',
+      '!':'010010010000010','?':'111001010000010','.':'000000000000010',
+      '+':'000010111010000','=':'000111000111000','<':'001010100010001',
+      '>':'100010001010100','*':'101010111010101','[':'110100100100110',
+      ']':'011001001001011','(':'011100100100011',')':'110001001001110',
+      '_':'000000000000111','#':'010111010111010','@':'111101101111100',
+      '"':'101101000000000',"'":'010010000000000',',':'000000000010010',
+      '/':'001001010100100','\\':'100100010001001'
+    };
+    const s = String(text).toUpperCase();
+    for(let ci=0;ci<s.length;ci++){
+      const ch=s[ci];
+      const pat=FONT[ch]||FONT[' '];
+      for(let py=0;py<5;py++){
+        for(let px2=0;px2<3;px2++){
+          if(pat[py*3+px2]==='1')
+            this._sp(col+ci*4+px2, row+py, 1);
+        }
+      }
+    }
+    this._render();
+  }
+
+  /* ── Render ── */
+  _render() {
+    const cx=this.cx;
+    cx.fillStyle='#a2b464'; cx.fillRect(0,0,96,64);
+    if(this.mode==='home') this._renderHome(cx);
+    else this._renderGraph(cx);
+  }
+  _renderHome(cx) {
+    cx.fillStyle='#0a180a';
+    cx.font='bold 7px "Courier New",monospace';
+    cx.textBaseline='top';
+    for(let r=0;r<8;r++){
+      for(let c=0;c<16;c++){
+        const ch=this.buf[r][c];
+        if(ch&&ch!==' ') cx.fillText(ch, c*6, r*8);
+      }
+    }
+  }
+  _renderGraph(cx) {
+    cx.fillStyle='#0a180a';
+    const d=cx.createImageData(96,64);
+    const fg=[10,24,10,255];
+    for(let i=0;i<96*64;i++){
+      if(this.px[i]){
+        d.data[i*4]=fg[0];d.data[i*4+1]=fg[1];
+        d.data[i*4+2]=fg[2];d.data[i*4+3]=fg[3];
+      }
+    }
+    cx.putImageData(d,0,0);
+  }
+}
+
+/* ================================================================
+   TOKENIZER
+   ================================================================ */
+function tokenize(src) {
+  const toks = [];
+  let i = 0;
+  while (i < src.length) {
+    if (src[i] === ' ') { i++; continue; }
+
+    // String
+    if (src[i] === '"') {
+      let j = i+1;
+      while (j < src.length && src[j] !== '"') j++;
+      toks.push({t:'str', v:src.slice(i+1,j)});
+      i = j+1; continue;
+    }
+
+    // Number
+    if ((src[i]>='0'&&src[i]<='9')||src[i]==='.') {
+      let j=i;
+      while(j<src.length&&((src[j]>='0'&&src[j]<='9')||src[j]==='.'))j++;
+      if(src[j]==='E'||src[j]==='e'){
+        j++;
+        if(src[j]==='+'||src[j]==='-')j++;
+        while(j<src.length&&src[j]>='0'&&src[j]<='9')j++;
+      }
+      toks.push({t:'num', v:parseFloat(src.slice(i,j))});
+      i=j; continue;
+    }
+
+    // Multi-char tokens (longest match first)
+    const rest = src.slice(i);
+    const MULTI = [
+      // operators
+      '→','->', '≤','<=','≥','>=','≠','!=','<>',
+      // commands / identifiers that may appear in expressions
+      'getKey','Pt-On','Pt-Off','Pxl-On','Pxl-Off','ClrDraw','ClrHome',
+      'AxesOff','AxesOn','PlotsOff','PlotsOn','DispGraph','randInt',
+      'iPart','fPart','augment','concat','inString','length','round',
+      'String','sqrt','rand','abs','int','sin','cos','tan','log','ln',
+      'dim','sum','seq','max','min','not','and','xor','or',
+      'Ans','θ',
+      'Str0','Str1','Str2','Str3','Str4','Str5','Str6','Str7','Str8','Str9',
+      'L1','L2','L3','L4','L5','L6',
+    ];
+    let found = false;
+    for (const op of MULTI) {
+      if (rest.startsWith(op)) {
+        // Word boundary check for alpha tokens
+        if (/^[A-Za-z]/.test(op)) {
+          const nx = src[i+op.length];
+          if (nx && /[A-Za-z0-9_]/.test(nx)) continue;
+        }
+        toks.push({t:'op', v:op});
+        i += op.length; found=true; break;
+      }
+    }
+    if (found) continue;
+
+    // Uppercase identifier — collect consecutive uppercase letters into one token
+    // so multi-letter names like DX, SL, SC work as variables
+    if (src[i]>='A'&&src[i]<='Z') {
+      let j=i+1;
+      while(j<src.length&&src[j]>='A'&&src[j]<='Z')j++;
+      toks.push({t:'id', v:src.slice(i,j)});
+      i=j; continue;
+    }
+    // single char
+    toks.push({t:'op', v:src[i]});
+    i++;
+  }
+  return toks;
+}
+
+/* ================================================================
+   EXPRESSION EVALUATOR (recursive descent)
+   ================================================================ */
+function evalExpr(src, interp) {
+  src = (src||'').trim();
+  if (!src) return 0;
+  try {
+    return new Expr(tokenize(src), interp).parse();
+  } catch(e) {
+    return 0;
+  }
+}
+
+class Expr {
+  constructor(toks, interp) { this.toks=toks; this.p=0; this.I=interp; }
+  peek()  { return this.toks[this.p]; }
+  next()  { return this.toks[this.p++]; }
+  eat(v)  {
+    if (this.peek()&&this.peek().v===v) { this.p++; return true; }
+    return false;
+  }
+  parse() { return this.or(); }
+
+  or() {
+    let v = this.and();
+    while (this.peek()&&(this.peek().v==='or'||this.peek().v==='xor')) {
+      const op=this.next().v;
+      const r=this.and();
+      v = op==='or' ? ((v||r)?1:0) : ((!!v!==!!r)?1:0);
+    }
+    return v;
+  }
+  and() {
+    let v=this.cmp();
+    while(this.peek()&&this.peek().v==='and'){
+      this.next(); const r=this.cmp();
+      v=(v&&r)?1:0;
+    }
+    return v;
+  }
+  cmp() {
+    let v=this.add();
+    const OPS=['=','≠','!=','<>','<','>','≤','<=','≥','>='];
+    while(this.peek()&&OPS.includes(this.peek().v)){
+      const op=this.next().v, r=this.add();
+      if(op==='=')v=v===r?1:0;
+      else if(op==='≠'||op==='!='||op==='<>')v=v!==r?1:0;
+      else if(op==='<')v=v<r?1:0;
+      else if(op==='>')v=v>r?1:0;
+      else if(op==='≤'||op==='<=')v=v<=r?1:0;
+      else if(op==='≥'||op==='>=')v=v>=r?1:0;
+    }
+    return v;
+  }
+  add() {
+    let v=this.mul();
+    while(this.peek()&&(this.peek().v==='+'||this.peek().v==='-')){
+      const op=this.next().v, r=this.mul();
+      v = (typeof v==='string'||typeof r==='string')
+        ? String(v)+String(r)
+        : (op==='+'?v+r:v-r);
+    }
+    return v;
+  }
+  mul() {
+    let v=this.unary();
+    while(this.peek()&&(this.peek().v==='*'||this.peek().v==='/')){
+      const op=this.next().v, r=this.unary();
+      v=op==='*'?v*r:v/r;
+    }
+    return v;
+  }
+  unary() {
+    if(this.peek()&&this.peek().v==='-'){this.next();return -this.pow();}
+    if(this.peek()&&this.peek().v==='not'){
+      this.next();this.eat('(');const v=this.parse();this.eat(')');
+      return v?0:1;
+    }
+    return this.pow();
+  }
+  pow() {
+    const b=this.atom();
+    if(this.peek()&&this.peek().v==='^'){
+      this.next(); return Math.pow(b,this.unary());
+    }
+    return b;
+  }
+  atom() {
+    const t=this.peek();
+    if(!t) return 0;
+
+    // grouped
+    if(t.v==='('){this.next();const v=this.parse();this.eat(')');return v;}
+    // list literal
+    if(t.v==='{'){return this.listLit();}
+    // negation shorthand (-) key
+    if(t.v==='(-)'){this.next();return -this.atom();}
+    // number
+    if(t.t==='num'){this.next();return t.v;}
+    // string
+    if(t.t==='str'){this.next();return t.v;}
+
+    // named tokens
+    const nm=t.v;
+    // constants
+    if(nm==='pi'||nm==='π'){this.next();return Math.PI;}
+    if(nm==='e'&&(!this.toks[this.p+1]||this.toks[this.p+1].v!=='(')){this.next();return Math.E;}
+    if(nm==='rand'){this.next();return Math.random();}
+    if(nm==='randInt'){
+      this.next();this.eat('(');
+      const lo=this.parse();this.eat(',');const hi=this.parse();this.eat(')');
+      return Math.floor(Math.random()*(hi-lo+1))+lo;
+    }
+    if(nm==='Ans'){this.next();return this.I.ans;}
+    if(nm==='getKey'){this.next();return this.I.currentKey;}
+
+    // List element or list
+    if(/^L[1-6]$/.test(nm)){
+      this.next();
+      if(this.peek()&&this.peek().v==='('){
+        this.next();
+        const idx=Math.round(this.parse())-1;
+        this.eat(')');
+        const lst=this.I.lists[nm]||[];
+        return idx>=0&&idx<lst.length?lst[idx]:0;
+      }
+      return this.I.lists[nm]||[];
+    }
+    // String var
+    if(/^Str[0-9]$/.test(nm)){this.next();return this.I.strs[nm]||'';}
+
+    // 1-arg math fns
+    const fn1={abs:Math.abs,int:Math.floor,sqrt:Math.sqrt,
+      iPart:Math.trunc,fPart:v=>v-Math.trunc(v),
+      sin:v=>Math.sin(this.I.deg?v*Math.PI/180:v),
+      cos:v=>Math.cos(this.I.deg?v*Math.PI/180:v),
+      tan:v=>Math.tan(this.I.deg?v*Math.PI/180:v),
+      log:Math.log10, ln:Math.log};
+    if(fn1[nm]){
+      this.next();this.eat('(');const v=this.parse();this.eat(')');
+      return fn1[nm](v);
+    }
+    // 2-arg math fns
+    if(nm==='max'||nm==='min'){
+      this.next();this.eat('(');
+      const a=this.parse();this.eat(',');const b=this.parse();this.eat(')');
+      return nm==='max'?Math.max(a,b):Math.min(a,b);
+    }
+    if(nm==='round'){
+      this.next();this.eat('(');
+      const v=this.parse();let d=0;
+      if(this.peek()&&this.peek().v===','){this.next();d=this.parse();}
+      this.eat(')');
+      const f=Math.pow(10,d);return Math.round(v*f)/f;
+    }
+    if(nm==='dim'){
+      this.next();this.eat('(');
+      const lnt=this.peek();
+      if(lnt&&/^L[1-6]$/.test(lnt.v)){
+        this.next();this.eat(')');
+        return (this.I.lists[lnt.v]||[]).length;
+      }
+      const v=this.parse();this.eat(')');
+      return Array.isArray(v)?v.length:0;
+    }
+    if(nm==='sum'){
+      this.next();this.eat('(');
+      const lnt=this.peek();
+      let lst;
+      if(lnt&&/^L[1-6]$/.test(lnt.v)){this.next();lst=this.I.lists[lnt.v]||[];}
+      else lst=this.parse();
+      this.eat(')');
+      return Array.isArray(lst)?lst.reduce((a,b)=>a+b,0):0;
+    }
+    if(nm==='augment'){
+      this.next();this.eat('(');
+      const a=this._listOrVar();this.eat(',');
+      const b=this._listOrVar();this.eat(')');
+      return [...(Array.isArray(a)?a:[a]),...(Array.isArray(b)?b:[b])];
+    }
+    if(nm==='seq'){
+      this.next();this.eat('(');
+      // capture expr tokens up to first comma at depth 0
+      const eToks=[];let depth=0;
+      while(this.p<this.toks.length){
+        const tk=this.toks[this.p];
+        if(tk.v==='('||tk.v==='{')depth++;
+        if(tk.v===')'||tk.v==='}'){if(depth===0)break;depth--;}
+        if(tk.v===','&&depth===0)break;
+        eToks.push(this.next());
+      }
+      this.eat(',');
+      const varTok=this.next();
+      this.eat(',');
+      const st=this.parse();this.eat(',');
+      const en=this.parse();
+      let step=1;
+      if(this.peek()&&this.peek().v===','){this.next();step=this.parse();}
+      this.eat(')');
+      const res=[];const dir=step>0?1:-1;
+      for(let v=st;dir>0?v<=en:v>=en;v+=step){
+        this.I.vars[varTok.v]=v;
+        res.push(new Expr(eToks.slice(),this.I).parse());
+      }
+      return res;
+    }
+    if(nm==='length'){
+      this.next();this.eat('(');const v=this.parse();this.eat(')');
+      return String(v).length;
+    }
+    if(nm==='sub'){
+      this.next();this.eat('(');
+      const s=this.parse();this.eat(',');
+      const st=this.parse();this.eat(',');const ln=this.parse();this.eat(')');
+      return String(s).slice(st-1,st-1+ln);
+    }
+    if(nm==='inString'){
+      this.next();this.eat('(');
+      const s=this.parse();this.eat(',');const sub=this.parse();this.eat(')');
+      return String(s).indexOf(String(sub))+1;
+    }
+    if(nm==='concat'||nm==='String'){
+      this.next();this.eat('(');const a=this.parse();
+      if(nm==='concat'){this.eat(',');const b=this.parse();this.eat(')');return String(a)+String(b);}
+      this.eat(')');return fmtN(a);
+    }
+
+    // Variable (single or multi-letter uppercase) or theta
+    if((/^[A-Z]+$/.test(nm))||nm==='θ'){
+      this.next();return this.I.vars[nm]!==undefined?this.I.vars[nm]:0;
+    }
+    // Fallback: unknown identifier
+    this.next();return 0;
+  }
+
+  listLit() {
+    this.eat('{');
+    const items=[];
+    while(this.peek()&&this.peek().v!=='}'){
+      items.push(this.parse());this.eat(',');
+    }
+    this.eat('}');return items;
+  }
+  _listOrVar() {
+    const t=this.peek();
+    if(t&&t.v==='{') return this.listLit();
+    if(t&&/^L[1-6]$/.test(t.v)){
+      this.next();return [...(this.I.lists[t.v]||[])];
+    }
+    return this.parse();
+  }
+}
+
+function fmtN(n) {
+  if(typeof n!=='number') return String(n);
+  if(Number.isInteger(n)) return String(n);
+  return parseFloat(n.toPrecision(10)).toString();
+}
+
+/* ================================================================
+   HELPERS — split lines by colon, split args
+   ================================================================ */
+function splitColon(line) {
+  const parts=[];let cur='',inS=false,dep=0;
+  for(const c of line){
+    if(c==='"')inS=!inS;
+    if(!inS){
+      if(c==='('||c==='{')dep++;
+      else if(c===')'||c==='}')dep--;
+      else if(c===':'&&dep===0){parts.push(cur);cur='';continue;}
+    }
+    cur+=c;
+  }
+  if(cur)parts.push(cur);
+  return parts;
+}
+function splitArgs(src) {
+  const args=[];let cur='',dep=0,inS=false;
+  for(const c of src){
+    if(c==='"')inS=!inS;
+    if(!inS){
+      if(c==='('||c==='{')dep++;
+      else if(c===')'||c==='}')dep--;
+      else if(c===','&&dep===0){args.push(cur.trim());cur='';continue;}
+    }
+    cur+=c;
+  }
+  if(cur.trim())args.push(cur.trim());
+  return args;
+}
+// Find store arrow → or -> not inside string/parens
+function storeIdx(s) {
+  let inS=false,dep=0;
+  for(let i=0;i<s.length;i++){
+    if(s[i]==='"')inS=!inS;
+    if(!inS){
+      if(s[i]==='('||s[i]==='{')dep++;
+      else if(s[i]===')'||s[i]==='}')dep--;
+      else if(dep===0){
+        if(s[i]==='→')return{idx:i,len:1};
+        if(s[i]==='-'&&s[i+1]==='>') return{idx:i,len:2};
+      }
+    }
+  }
+  return null;
+}
+
+/* ================================================================
+   INTERPRETER
+   ================================================================ */
+class TI83 {
+  constructor(screen) {
+    this.scr=screen;
+    this.vars={};
+    this.lists={};
+    this.strs={};
+    this.ans=0;
+    this.currentKey=0;
+    this.deg=true;
+    this.running=false;
+    this._abort=false;
+    this._inputResolve=null;
+    this._pauseResolve=null;
+  }
+
+  async run(text) {
+    this._abort=false;
+    this.running=true;
+    document.getElementById('run-led').style.display='block';
+    try {
+      await this._exec(this._parse(text));
+    } catch(e) {
+      if(e.message!=='STOP'&&e.message!=='ABORT'){
+        this.scr.disp('ERR:'+e.message.slice(0,12));
+      }
+    }
+    this.running=false;
+    document.getElementById('run-led').style.display='none';
+  }
+  abort() {
+    this._abort=true;
+    if(this._inputResolve){this._inputResolve('');this._inputResolve=null;}
+    if(this._pauseResolve){this._pauseResolve();this._pauseResolve=null;}
+  }
+
+  _parse(text) {
+    const stmts=[];
+    for(const rawLine of text.split('\n')){
+      const line=rawLine.trim();
+      if(!line)continue;
+      const clean=line.startsWith(':')?line.slice(1):line;
+      // skip PROGRAM: header
+      if(/^PROGRAM:/i.test(clean))continue;
+      for(const p of splitColon(clean)){
+        const t=p.trim();
+        if(t)stmts.push(t);
+      }
+    }
+    return stmts;
+  }
+
+  _buildJumps(stmts) {
+    const J={};
+    const stack=[];
+    for(let i=0;i<stmts.length;i++){
+      const up=stmts[i].trim().toUpperCase();
+      const cmd=up.split(/[\s(]/)[0];
+      if(cmd==='IF'){
+        // look ahead for Then
+        let ni=i+1;
+        while(ni<stmts.length&&!stmts[ni].trim())ni++;
+        if(ni<stmts.length&&stmts[ni].trim().toUpperCase()==='THEN'){
+          J[i]={tp:'if_then',then:ni};
+          stack.push({tp:'if_then',i});
+        } else {
+          J[i]={tp:'if_single'};
+        }
+      } else if(up==='THEN'){
+        // no-op marker
+      } else if(up==='ELSE'){
+        for(let j=stack.length-1;j>=0;j--){
+          if(stack[j].tp==='if_then'){
+            J[stack[j].i].else=i;
+            stack[j].elseI=i;        // ← store elseI on stack entry
+            J[i]={tp:'else',ifI:stack[j].i};
+            break;
+          }
+        }
+      } else if(up==='END'){
+        const top=stack.pop();
+        if(!top)continue;
+        if(top.tp==='if_then'){
+          J[top.i].end=i;
+          if(top.elseI!==undefined && J[top.elseI]) J[top.elseI].end=i;
+          J[i]={tp:'end_if',start:top.i};
+        } else if(top.tp==='while'){
+          J[top.i].end=i;
+          J[i]={tp:'end_while',start:top.i};
+        } else if(top.tp==='for'){
+          J[top.i].end=i;
+          J[i]={tp:'end_for',start:top.i};
+        } else if(top.tp==='repeat'){
+          J[top.i].end=i;
+          J[i]={tp:'end_repeat',start:top.i};
+        }
+      } else if(cmd==='WHILE'){
+        J[i]={tp:'while'};stack.push({tp:'while',i});
+      } else if(cmd==='FOR'){
+        J[i]={tp:'for'};stack.push({tp:'for',i});
+      } else if(cmd==='REPEAT'){
+        J[i]={tp:'repeat'};stack.push({tp:'repeat',i});
+      }
+    }
+    return J;
+  }
+
+  async _exec(stmts) {
+    const J=this._buildJumps(stmts);
+    // First pass: collect labels
+    const LBL={};
+    for(let i=0;i<stmts.length;i++){
+      const m=stmts[i].match(/^[Ll][Bb][Ll]\s+(\S+)$/);
+      if(m) LBL[m[1].toUpperCase()]=i;
+    }
+
+    let pc=0, yieldCtr=0;
+    while(pc<stmts.length){
+      if(this._abort) throw new Error('ABORT');
+
+      // Yield to browser every 30 statements
+      yieldCtr++;
+      if(yieldCtr%30===0){
+        await new Promise(r=>setTimeout(r,0));
+      }
+
+      const stmt=stmts[pc].trim();
+      if(!stmt){pc++;continue;}
+
+      const up=stmt.toUpperCase();
+      const cmd=up.split(/[\s(]/)[0];
+      let npc=pc+1;
+
+      // ── STORE: expr→var or expr->var ──
+      const si=storeIdx(stmt);
+      if(si){
+        const lhs=stmt.slice(0,si.idx).trim();
+        const rhs=stmt.slice(si.idx+si.len).trim();
+        const val=evalExpr(lhs,this);
+        this._store(rhs,val);
+        this.ans=val;
+        pc=npc;continue;
+      }
+
+      // ── Commands ──
+      if(cmd==='CLRHOME'){
+        this.scr.clearHome();
+      } else if(cmd==='CLRDRAW'){
+        this.scr.clearGraph();
+        this.scr.mode='graph';
+      } else if(cmd==='AXESOFF'){this.scr.axesOn=false;
+      } else if(cmd==='AXESON'){this.scr.axesOn=true;
+      } else if(cmd==='PLOTSOFF'||cmd==='PLOTSON'){/* ignore */
+      } else if(cmd==='DISPGRAPH'){
+        this.scr.mode='graph';this.scr._render();
+      } else if(cmd==='FULLSCREEN'||cmd==='FULL'){/* ignore */
+      } else if(cmd==='DEGREE'){this.deg=true;
+      } else if(cmd==='RADIAN'){this.deg=false;
+
+      } else if(cmd==='DISP'){
+        const argS=stmt.slice(4).trim();
+        if(!argS){this.scr.disp('');}
+        else{
+          for(const a of splitArgs(argS)){
+            const v=evalExpr(a,this);
+            this.scr.disp(typeof v==='number'?fmtN(v):String(v));
+          }
+        }
+      } else if(cmd==='OUTPUT'){
+        const inner=stmt.slice(stmt.indexOf('(')+1,stmt.lastIndexOf(')'));
+        const args=splitArgs(inner);
+        if(args.length>=3){
+          const row=evalExpr(args[0],this);
+          const col=evalExpr(args[1],this);
+          const val=evalExpr(args[2],this);
+          this.scr.output(row,col,typeof val==='number'?fmtN(val):String(val));
+        }
+      } else if(cmd==='TEXT'){
+        const inner=stmt.slice(stmt.indexOf('(')+1,stmt.lastIndexOf(')'));
+        const args=splitArgs(inner);
+        if(args.length>=3){
+          const row=evalExpr(args[0],this);
+          const col=evalExpr(args[1],this);
+          const val=evalExpr(args[2],this);
+          this.scr.textGraph(row,col,typeof val==='number'?fmtN(val):String(val));
+        }
+
+      } else if(cmd==='INPUT'){
+        const rest=stmt.slice(5).trim();
+        let prompt='?',varN=rest;
+        if(rest.startsWith('"')){
+          const e=rest.indexOf('"',1);
+          prompt=rest.slice(1,e);
+          varN=rest.slice(e+1).replace(/^\s*,\s*/,'').trim();
+        }
+        const val=await this._input(prompt);
+        const num=parseFloat(val);
+        this._store(varN,isNaN(num)?val:num);
+      } else if(cmd==='PROMPT'){
+        const vars=stmt.slice(6).trim().split(',').map(s=>s.trim());
+        for(const v of vars){
+          const val=await this._input(v+'=?');
+          const num=parseFloat(val);
+          this._store(v,isNaN(num)?val:num);
+        }
+
+      } else if(cmd==='PAUSE'){
+        const arg=stmt.slice(5).trim();
+        if(!arg){
+          await this._pauseUntilKey();
+        } else {
+          const t=evalExpr(arg,this);
+          await new Promise(r=>{
+            this._pauseResolve=r;
+            setTimeout(()=>{this._pauseResolve=null;r();},Math.max(0,t*1000));
+          });
+          this._pauseResolve=null;
+        }
+      } else if(cmd==='STOP'||cmd==='RETURN'){
+        throw new Error('STOP');
+
+      } else if(cmd==='GOTO'){
+        const lbl=stmt.slice(4).trim().toUpperCase();
+        if(LBL[lbl]!==undefined){pc=LBL[lbl];continue;}
+        throw new Error('LABEL '+lbl);
+      } else if(cmd==='LBL'){
+        /* no-op */
+
+      } else if(cmd==='IF'){
+        const jmp=J[pc];
+        const cond=evalExpr(stmt.slice(2).trim(),this);
+        if(jmp&&jmp.tp==='if_single'){
+          if(!cond) npc=pc+2; // skip next statement
+        } else if(jmp&&jmp.tp==='if_then'){
+          if(!cond){
+            // jump past Then body → to Else+1 or End+1
+            npc=jmp.else!==undefined ? jmp.else+1 : (jmp.end!==undefined?jmp.end+1:npc);
+          }
+          // if true: fall through to Then (marker)
+        }
+
+      } else if(up==='THEN'){
+        /* marker — skip */
+      } else if(up==='ELSE'){
+        // If we reach Else normally (Then was executed), jump past Else body to End
+        const jmp=J[pc];
+        if(jmp&&jmp.end!==undefined) npc=jmp.end+1;
+
+      } else if(up==='END'){
+        const jmp=J[pc];
+        if(!jmp){/* plain End */}
+        else if(jmp.tp==='end_while'){
+          pc=jmp.start; continue;   // re-evaluate While condition
+        } else if(jmp.tp==='end_for'){
+          // Increment and check
+          const fs=stmts[jmp.start];
+          const fi=fs.slice(fs.indexOf('(')+1,fs.lastIndexOf(')'));
+          const fa=splitArgs(fi);
+          const vn=fa[0].trim();
+          const endV=evalExpr(fa[2],this);
+          const step=fa[3]?evalExpr(fa[3],this):1;
+          const cur=(this.vars[vn]||0)+step;
+          this.vars[vn]=cur;
+          if((step>0&&cur<=endV)||(step<0&&cur>=endV)){
+            npc=jmp.start+1; // loop: go to first body stmt
+          }
+          // else fall through: for loop done
+        } else if(jmp.tp==='end_repeat'){
+          // Check Repeat condition
+          const rs=stmts[jmp.start];
+          const cond=evalExpr(rs.slice(6).trim(),this);
+          if(!cond) {pc=jmp.start+1;continue;} // repeat again
+          // else fall through: done
+        }
+        // end_if: just fall through
+
+      } else if(cmd==='WHILE'){
+        const jmp=J[pc];
+        const cond=evalExpr(stmt.slice(5).trim(),this);
+        if(!cond){
+          npc=jmp&&jmp.end!==undefined?jmp.end+1:npc;
+        }
+
+      } else if(cmd==='FOR'){
+        const inner=stmt.slice(stmt.indexOf('(')+1,stmt.lastIndexOf(')'));
+        const fa=splitArgs(inner);
+        if(fa.length>=3){
+          const vn=fa[0].trim();
+          const startV=evalExpr(fa[1],this);
+          const endV=evalExpr(fa[2],this);
+          const step=fa[3]?evalExpr(fa[3],this):1;
+          this.vars[vn]=startV;
+          const jmp=J[pc];
+          if((step>0&&startV>endV)||(step<0&&startV<endV)){
+            npc=jmp&&jmp.end!==undefined?jmp.end+1:npc;
+          }
+        }
+
+      } else if(cmd==='REPEAT'){
+        /* always enter body; condition checked at End */
+
+      } else if(cmd==='PT-ON'){
+        const inner=stmt.slice(stmt.indexOf('(')+1,stmt.lastIndexOf(')'));
+        const a=splitArgs(inner);
+        if(a.length>=2)this.scr.ptOn(evalExpr(a[0],this),evalExpr(a[1],this));
+        this.scr.mode='graph';
+      } else if(cmd==='PT-OFF'){
+        const inner=stmt.slice(stmt.indexOf('(')+1,stmt.lastIndexOf(')'));
+        const a=splitArgs(inner);
+        if(a.length>=2)this.scr.ptOff(evalExpr(a[0],this),evalExpr(a[1],this));
+        this.scr.mode='graph';
+      } else if(cmd==='PXL-ON'){
+        const inner=stmt.slice(stmt.indexOf('(')+1,stmt.lastIndexOf(')'));
+        const a=splitArgs(inner);
+        if(a.length>=2)this.scr.pxlOn(evalExpr(a[0],this),evalExpr(a[1],this));
+        this.scr.mode='graph';
+      } else if(cmd==='PXL-OFF'){
+        const inner=stmt.slice(stmt.indexOf('(')+1,stmt.lastIndexOf(')'));
+        const a=splitArgs(inner);
+        if(a.length>=2)this.scr.pxlOff(evalExpr(a[0],this),evalExpr(a[1],this));
+        this.scr.mode='graph';
+      } else if(cmd==='LINE'){
+        const inner=stmt.slice(stmt.indexOf('(')+1,stmt.lastIndexOf(')'));
+        const a=splitArgs(inner);
+        if(a.length>=4)this.scr.line(
+          evalExpr(a[0],this),evalExpr(a[1],this),
+          evalExpr(a[2],this),evalExpr(a[3],this));
+        this.scr.mode='graph';
+      } else if(cmd==='CIRCLE'){
+        const inner=stmt.slice(stmt.indexOf('(')+1,stmt.lastIndexOf(')'));
+        const a=splitArgs(inner);
+        if(a.length>=3)this.scr.circle(
+          evalExpr(a[0],this),evalExpr(a[1],this),evalExpr(a[2],this));
+        this.scr.mode='graph';
+      } else if(cmd==='FILL'){
+        const inner=stmt.slice(stmt.indexOf('(')+1,stmt.lastIndexOf(')'));
+        const a=splitArgs(inner);
+        if(a.length>=2){
+          const val=evalExpr(a[0],this);
+          const ln=a[1].trim();
+          if(this.lists[ln])this.lists[ln].fill(val);
+        }
+      } else {
+        // Evaluate as expression (e.g. standalone function call)
+        try{const v=evalExpr(stmt,this);if(v!==undefined)this.ans=v;}
+        catch(e){/* ignore */}
+      }
+
+      pc=npc;
+    }
+  }
+
+  _store(target, val) {
+    target=target.trim();
+    // List element: L1(expr)
+    const lm=target.match(/^(L[1-6])\((.+)\)$/);
+    if(lm){
+      const ln=lm[1];const idx=Math.round(evalExpr(lm[2],this))-1;
+      if(!this.lists[ln])this.lists[ln]=[];
+      while(this.lists[ln].length<=idx)this.lists[ln].push(0);
+      this.lists[ln][idx]=val;return;
+    }
+    // List
+    if(/^L[1-6]$/.test(target)){
+      this.lists[target]=Array.isArray(val)?[...val]:[val];return;
+    }
+    // String
+    if(/^Str[0-9]$/.test(target)){this.strs[target]=String(val);return;}
+    // Variable
+    this.vars[target]=val;
+  }
+
+  async _input(prompt) {
+    return new Promise(resolve=>{
+      this.scr.disp(prompt);
+      const bar=document.getElementById('input-bar');
+      const fld=document.getElementById('input-field');
+      bar.style.display='block';
+      fld.value='';
+      fld.focus();
+      this._inputResolve=val=>{
+        bar.style.display='none';
+        fld.onkeydown=null;
+        resolve(val);
+      };
+      fld.onkeydown=e=>{
+        if(e.key==='Enter'){
+          e.preventDefault();
+          const v=fld.value;
+          this.scr.disp(v);
+          const r=this._inputResolve;
+          this._inputResolve=null;
+          if(r)r(v);
+        }
+      };
+    });
+  }
+
+  async _pauseUntilKey() {
+    return new Promise(resolve=>{this._pauseResolve=resolve;});
+  }
+}
+
+/* ================================================================
+   CALCULATOR UI
+   ================================================================ */
+const scr = new TI83Screen(document.getElementById('screen'));
+const vm  = new TI83 (scr);
+
+// Welcome screen
+function welcome() {
+  scr.clearHome();
+  scr.output(1,1,'TI-83 EMULATOR');
+  scr.output(2,1,'──────────────');
+  scr.output(3,1,'TI-Basic Ready');
+  scr.output(5,1,'PRGM: programs');
+  scr.output(6,1,'CLEAR/ESC: stop');
+  scr.output(8,14,'OK');
+}
+welcome();
+
+// ── Flip animation ──
+const calcEl=document.getElementById('calc');
+function flipToPrgm(){
+  if(vm.running){vm.abort();setTimeout(()=>calcEl.classList.add('flipped'),150);}
+  else calcEl.classList.add('flipped');
+}
+function flipBack(){calcEl.classList.remove('flipped');}
+document.getElementById('prgm-btn').addEventListener('click',flipToPrgm);
+
+// ── Program management ──
+const CACHE={};
+
+async function loadBuiltin(name){
+  if(CACHE[name]){setEditor(name,CACHE[name]);return;}
+  try{
+    const r=await fetch(`programs/${name}.bas`);
+    if(r.ok){const t=await r.text();CACHE[name]=t;setEditor(name,t);return;}
+  }catch(e){}
+  // Fallback embedded
+  const t=EMBEDDED[name];
+  if(t){CACHE[name]=t;setEditor(name,t);}
+  else setStatus('Could not load '+name);
+}
+
+function setEditor(name,text){
+  document.getElementById('program-editor').value=text;
+  document.getElementById('ed-pname').textContent=name+'.bas';
+  setStatus(name+'.bas loaded ('+text.split('\n').length+' lines).');
+  currentProgName=name;
+}
+function setStatus(msg){document.getElementById('ed-status').textContent=msg;}
+
+let currentProgName='NEW PROGRAM';
+
+function openProg(){document.getElementById('file-open').click();}
+document.getElementById('file-open').addEventListener('change',e=>{
+  const f=e.target.files[0];if(!f)return;
+  const rd=new FileReader();
+  rd.onload=ev=>{
+    const t=ev.target.result;
+    const n=f.name.replace(/\..*$/,'').toUpperCase();
+    setEditor(n,t);
+  };
+  rd.readAsText(f);
+  e.target.value='';
+});
+
+function saveProg(){
+  const text=document.getElementById('program-editor').value;
+  const name=(currentProgName||'PROGRAM').toUpperCase();
+  const blob=new Blob([text],{type:'text/plain'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=name+'.bas';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  setStatus(name+'.bas saved.');
+}
+
+function runEdProg(){
+  const text=document.getElementById('program-editor').value;
+  if(!text.trim()){setStatus('No program to run.');return;}
+  flipBack();
+  setTimeout(()=>{
+    scr.clearHome();
+    vm.vars={};vm.lists={};vm.strs={};vm.ans=0;vm.currentKey=0;
+    vm.run(text);
+  },400);
+}
+
+// ── Key handling ──
+const KB_MAP={
+  'ArrowUp':25,'ArrowDown':34,'ArrowLeft':24,'ArrowRight':26,
+  'Enter':105,' ':105,
+  'Escape':45,
+  '0':92,'1':81,'2':82,'3':83,'4':71,'5':72,'6':73,'7':61,'8':62,'9':63,
+  '+':100,'-':75,'*':85,'/':95,'^':16,'.':53,',':43,
+};
+const BTN_MAP={
+  up:25,down:34,left:24,right:26,enter:105,clear:45,del:102,
+  '0':92,'1':81,'2':82,'3':83,'4':71,'5':72,'6':73,'7':61,'8':62,'9':63,
+  add:100,sub:75,mul:85,div:95,pow:16,dot:53,neg:54,on:11,
+};
+
+function pressKey(k){
+  vm.currentKey=k;
+  if(vm._pauseResolve&&(k===105||k===45)){
+    const r=vm._pauseResolve;vm._pauseResolve=null;r();
+  }
+}
+
+document.addEventListener('keydown',e=>{
+  if(document.activeElement===document.getElementById('program-editor'))return;
+  if(document.activeElement===document.getElementById('input-field'))return;
+  const k=KB_MAP[e.key];
+  if(k!==undefined){pressKey(k);e.preventDefault();}
+  if(e.key==='Escape'&&vm.running){vm.abort();e.preventDefault();}
+});
+document.addEventListener('keyup',e=>{
+  const k=KB_MAP[e.key];
+  if(k!==undefined&&vm.currentKey===k) vm.currentKey=0;
+});
+
+document.querySelectorAll('.btn[data-k],.dpad-btn[data-k]').forEach(btn=>{
+  const key=btn.getAttribute('data-k');
+  if(key==='prgm')return;
+  btn.addEventListener('click',()=>{
+    btn.classList.add('pressed');
+    setTimeout(()=>btn.classList.remove('pressed'),100);
+    if(key==='on'){
+      if(vm.running)vm.abort();
+      setTimeout(welcome,150);
+      return;
+    }
+    if(key==='clear'){
+      if(vm.running){vm.abort();return;}
+      scr.clearHome();return;
+    }
+    const k=BTN_MAP[key];
+    if(k!==undefined)pressKey(k);
+    // Typing chars when idle
+    const ch=btn.getAttribute('data-ch');
+    if(ch&&!vm.running){
+      const row=Math.min(7,scr.curR);
+      scr.output(row+1,1,ch);
+    }
+  });
+});
+
+/* ================================================================
+   EMBEDDED PROGRAMS (fallback when fetch isn't available)
+   ================================================================ */
+const EMBEDDED = {
+SNAKE:
+`PROGRAM:SNAKE
+:ClrHome
+:Lbl MENU
+:Output(1,5,"- SNAKE -")
+:Output(3,3,"Arrows=move")
+:Output(4,3,"CLEAR=quit")
+:Output(6,4,"ENTER to")
+:Output(7,4,"start!")
+:Pause
+:ClrHome
+:1->DX
+:0->DY
+:8->SX
+:4->SY
+:3->SL
+:0->SC
+:seq(0,I,1,30)->L1
+:seq(0,I,1,30)->L2
+:8->L1(1)
+:7->L1(2)
+:6->L1(3)
+:4->L2(1)
+:4->L2(2)
+:4->L2(3)
+:Lbl GETFOOD
+:1+int(14*rand)->FX
+:1+int(6*rand)->FY
+:0->H
+:For(I,1,SL)
+:If L1(I)=FX and L2(I)=FY
+:1->H
+:End
+:If H
+:Goto GETFOOD
+:Lbl LOOP
+:Pause .1
+:getKey->K
+:If K=26 and DX<>-1
+:Then
+:1->DX
+:0->DY
+:End
+:If K=24 and DX<>1
+:Then
+:-1->DX
+:0->DY
+:End
+:If K=25 and DY<>1
+:Then
+:0->DX
+:-1->DY
+:End
+:If K=34 and DY<>-1
+:Then
+:0->DX
+:1->DY
+:End
+:If K=45
+:Stop
+:SX+DX->NX
+:SY+DY->NY
+:If NX<1 or NX>16 or NY<1 or NY>7
+:Goto DEAD
+:0->H
+:For(I,1,SL)
+:If L1(I)=NX and L2(I)=NY
+:1->H
+:End
+:If H
+:Goto DEAD
+:0->ATE
+:If NX=FX and NY=FY
+:1->ATE
+:If ATE
+:Then
+:SL+1->SL
+:SC+10->SC
+:End
+:For(I,SL,2,-1)
+:L1(I-1)->L1(I)
+:L2(I-1)->L2(I)
+:End
+:NX->L1(1)
+:NY->L2(1)
+:NX->SX
+:NY->SY
+:ClrHome
+:Output(FY,FX,"*")
+:For(I,1,SL)
+:Output(L2(I),L1(I),"O")
+:End
+:Output(8,1,"SC:")
+:Output(8,4,SC)
+:If ATE
+:Goto GETFOOD
+:Goto LOOP
+:Lbl DEAD
+:ClrHome
+:Output(3,4,"GAME OVER!")
+:Output(4,4,"Score:")
+:Output(4,11,SC)
+:Output(6,3,"ENTER again")
+:Pause
+:ClrHome
+:Goto MENU`,
+
+PONG:
+`PROGRAM:PONG
+:ClrHome
+:Lbl MENU
+:Output(1,5,"- PONG -")
+:Output(3,3,"Up/Down=move")
+:Output(4,3,"CLEAR=quit")
+:Output(5,3,"Score to 7")
+:Output(7,4,"ENTER to")
+:Output(8,4,"start!")
+:Pause
+:ClrHome
+:0->PS
+:0->CS
+:9->BX
+:4->BY
+:1->BDX
+:1->BDY
+:4->PY
+:4->CY
+:Lbl GLOOP
+:Pause .06
+:getKey->K
+:If K=25 and PY>1
+:PY-1->PY
+:If K=34 and PY<8
+:PY+1->PY
+:If K=45
+:Stop
+:BX+BDX->BX
+:BY+BDY->BY
+:If BY<1
+:Then
+:1->BY
+:-1*BDY->BDY
+:End
+:If BY>8
+:Then
+:8->BY
+:-1*BDY->BDY
+:End
+:If BX<=2 and abs(BY-PY)<=1
+:Then
+:-1*BDX->BDX
+:3->BX
+:End
+:If BX>=15 and abs(BY-CY)<=1
+:Then
+:-1*BDX->BDX
+:14->BX
+:End
+:If BX<1
+:Then
+:CS+1->CS
+:9->BX
+:4->BY
+:1->BDX
+:End
+:If BX>16
+:Then
+:PS+1->PS
+:9->BX
+:4->BY
+:-1->BDX
+:End
+:If abs(CY-BY)>1
+:Then
+:If BY<CY
+:CY-1->CY
+:If BY>CY
+:CY+1->CY
+:End
+:ClrHome
+:Output(PY,1,"[")
+:If PY>1
+:Output(PY-1,1,"|")
+:If PY<8
+:Output(PY+1,1,"|")
+:Output(CY,16,"]")
+:If CY>1
+:Output(CY-1,16,"|")
+:If CY<8
+:Output(CY+1,16,"|")
+:Output(BY,BX,"o")
+:Output(1,5,"YOU")
+:Output(1,9,PS)
+:Output(1,11,"CPU")
+:Output(1,15,CS)
+:If PS=7 or CS=7
+:Goto WIN
+:Goto GLOOP
+:Lbl WIN
+:ClrHome
+:Output(3,4,"GAME OVER!")
+:If PS=7
+:Output(5,4,"YOU  WIN!")
+:If CS=7
+:Output(5,4,"CPU  WINS!")
+:Output(7,3,"ENTER=restart")
+:Pause
+:ClrHome
+:Goto MENU`,
+
+TETRIS:
+`PROGRAM:TETRIS
+:ClrHome
+:Lbl MENU
+:Output(1,5,"- TETRIS -")
+:Output(3,3,"Left/Right=move")
+:Output(4,3,"Down=fast drop")
+:Output(5,3,"Up=rotate")
+:Output(7,4,"ENTER to")
+:Output(8,4,"start!")
+:Pause
+:ClrHome
+:0->SC
+:0->LN
+:seq(0,I,1,56)->L1
+:Lbl NEWP
+:5->PX
+:1->PY
+:int(7*rand)+1->TP
+:Lbl DRAW
+:ClrHome
+:For(R,1,7)
+:Output(R+1,4,"[")
+:Output(R+1,12,"]")
+:End
+:Output(1,1,"SC:")
+:Output(1,4,SC)
+:Output(1,9,"LN:")
+:Output(1,12,LN)
+:For(R,1,7)
+:For(C,1,7)
+:If L1((R-1)*7+C)=1
+:Output(R+1,C+4,"#")
+:End
+:End
+:Output(PY+1,PX+4,"X")
+:Lbl TICK
+:Pause .25
+:getKey->K
+:If K=45
+:Stop
+:If K=24 and PX>1
+:PX-1->PX
+:If K=26 and PX<7
+:PX+1->PX
+:If K=34
+:Then
+:PY+1->PY
+:PY+1->PY
+:End
+:PY+1->PY
+:If PY>7
+:Goto PLACE
+:If L1((PY-1)*7+PX)=1
+:Goto PLACE
+:Goto DRAW
+:Lbl PLACE
+:If PY<=1
+:Goto OVER
+:1->L1((PY-1)*7+PX)
+:For(R,1,7)
+:1->FR
+:For(C,1,7)
+:If L1((R-1)*7+C)=0
+:0->FR
+:End
+:If FR=1
+:Then
+:LN+1->LN
+:SC+10->SC
+:For(RR,R,2,-1)
+:For(CC,1,7)
+:L1((RR-2)*7+CC)->L1((RR-1)*7+CC)
+:End
+:End
+:For(CC,1,7)
+:0->L1(CC)
+:End
+:End
+:End
+:Goto NEWP
+:Lbl OVER
+:ClrHome
+:Output(3,3,"GAME OVER!")
+:Output(4,3,"Score:")
+:Output(4,10,SC)
+:Output(5,3,"Lines:")
+:Output(5,10,LN)
+:Output(7,3,"ENTER again")
+:Pause
+:ClrHome
+:Goto MENU`
+};
+</script>
+</body>
+</html>
