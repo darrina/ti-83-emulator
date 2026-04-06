@@ -1010,7 +1010,7 @@ class TI83 {
         if(!top)continue;
         if(top.tp==='if_then'){
           J[top.i].end=i;
-          if(top.elseI!==undefined) J[top.elseI].end=i; // ← use elseI
+          if(top.elseI!==undefined && J[top.elseI]) J[top.elseI].end=i;
           J[i]={tp:'end_if',start:top.i};
         } else if(top.tp==='while'){
           J[top.i].end=i;
